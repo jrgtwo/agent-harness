@@ -4,7 +4,8 @@ import { defineConfig } from 'tsup';
 // Apps depend on this via a local `file:` link during co-development; `dist/` is gitignored.
 // Runtime deps (ajv, ws) stay external — they're the consumer's node_modules, not bundled here.
 export default defineConfig({
-  entry: ['src/index.ts'],
+  // Two entries: the default '.' (full server surface) and './client' (browser-safe client SDK).
+  entry: ['src/index.ts', 'src/client.ts'],
   format: ['esm'],
   dts: true,
   sourcemap: true,
