@@ -13,7 +13,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "serve": "NODE_NO_WARNINGS=1 tsx example/serve.ts",
-    "example": "tsx example/run.ts"
+    "example": "tsx example/run.ts",
+    "prepare": "husky"
   },
   "dependencies": {
     "ajv": "^8.17.1",
@@ -25,6 +26,7 @@
     "@types/ws": "^8.5.13",
     "eslint": "^9.15.0",
     "eslint-config-prettier": "^9.1.0",
+    "husky": "^9.1.7",
     "prettier": "^3.4.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
