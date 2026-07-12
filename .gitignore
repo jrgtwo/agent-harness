@@ -7,3 +7,7 @@ data/
 *.sqlite-*
 .env
 .env.local
+
+# local working docs / session tooling — not part of the shipped repo
+.claude/
+docs/
