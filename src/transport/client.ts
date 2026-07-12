@@ -1,7 +1,7 @@
-import type { AgentEvent } from './events';
+import type { AgentEvent } from '../core/events';
 import type { ClientMessage, ClientToolDecl, ServerMessage } from './protocol';
-import type { Message } from './types';
-import type { SessionInfo } from './store';
+import type { Message } from '../core/types';
+import type { SessionInfo } from '../store/store';
 
 /**
  * The thin client SDK an app uses to talk to the harness. In the browser it uses the global

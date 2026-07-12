@@ -1,6 +1,6 @@
 import { capText, compactHistory, estimateTokens, injectLiveState, summarizeMessages } from './context';
-import type { EventSink } from './events';
-import type { Message, ModelClient, ToolCall } from './types';
+import type { EventSink } from '../core/events';
+import type { Message, ModelClient, ToolCall } from '../core/types';
 import type { ToolDef, ToolRegistry } from './tools';
 
 export interface ConsentRequest {

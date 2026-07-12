@@ -1,5 +1,5 @@
 import Ajv, { type ValidateFunction } from 'ajv';
-import type { JSONSchema, ModelToolSchema } from './types';
+import type { JSONSchema, ModelToolSchema } from '../core/types';
 
 /**
  * Consent mode a tool declares. v1 policy gates everything except explicit `auto`
@@ -54,9 +54,7 @@ export class ToolRegistry {
     const v = this.validators.get(name);
     if (!v) return { ok: false, errors: `no validator registered for "${name}"` };
     if (v(args)) return { ok: true };
-    const errors = (v.errors ?? [])
-      .map((e) => `${e.instancePath || '(root)'} ${e.message ?? 'invalid'}`)
-      .join('; ');
+    const errors = (v.errors ?? []).map((e) => `${e.instancePath || '(root)'} ${e.message ?? 'invalid'}`).join('; ');
     return { ok: false, errors: errors || 'failed schema validation' };
   }
 }

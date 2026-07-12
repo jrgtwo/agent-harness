@@ -8,6 +8,10 @@
     "test": "NODE_NO_WARNINGS=1 vitest run",
     "test:watch": "NODE_NO_WARNINGS=1 vitest",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "serve": "NODE_NO_WARNINGS=1 tsx example/serve.ts",
     "example": "tsx example/run.ts"
   },
@@ -16,10 +20,15 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.15.0",
     "@types/node": "^22.10.0",
     "@types/ws": "^8.5.13",
+    "eslint": "^9.15.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
+    "typescript-eslint": "^8.15.0",
     "vitest": "^2.1.8"
   }
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { estimateTokens, capText, injectLiveState, compactHistory, summarizeMessages } from './context';
-import type { Message, ModelCallResult, ModelClient } from './types';
+import type { Message, ModelCallResult, ModelClient } from '../core/types';
 
 describe('context helpers', () => {
   it('estimates tokens from serialized size', () => {

@@ -7,7 +7,7 @@ import type {
   ModelToolSchema,
   ToolCall,
   Usage,
-} from './types';
+} from '../core/types';
 
 type FetchLike = typeof fetch;
 
@@ -68,10 +68,7 @@ export class OpenAICompatibleClient implements ModelClient {
   }
 }
 
-async function readStream(
-  body: ReadableStream<Uint8Array>,
-  handlers?: ModelStreamHandlers,
-): Promise<ModelCallResult> {
+async function readStream(body: ReadableStream<Uint8Array>, handlers?: ModelStreamHandlers): Promise<ModelCallResult> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';

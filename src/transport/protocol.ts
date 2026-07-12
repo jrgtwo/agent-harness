@@ -1,6 +1,6 @@
-import type { AgentEvent } from './events';
-import type { Message } from './types';
-import type { SessionInfo } from './store';
+import type { AgentEvent } from '../core/events';
+import type { Message } from '../core/types';
+import type { SessionInfo } from '../store/store';
 
 /**
  * The wire contract between an app and the harness sidecar. One WebSocket per connection;
@@ -48,7 +48,10 @@ export function parseClientMessage(raw: unknown): Parsed<ClientMessage> {
   switch (m.type) {
     case 'hello':
       if (!str(m.token)) return { ok: false, error: 'hello requires a string token' };
-      return { ok: true, value: { type: 'hello', token: m.token, clientTools: m.clientTools as ClientToolDecl[] | undefined } };
+      return {
+        ok: true,
+        value: { type: 'hello', token: m.token, clientTools: m.clientTools as ClientToolDecl[] | undefined },
+      };
     case 'run.start':
       if (!str(m.runId) || !str(m.input)) return { ok: false, error: 'run.start requires runId and input' };
       return {
@@ -67,7 +70,16 @@ export function parseClientMessage(raw: unknown): Parsed<ClientMessage> {
       return { ok: true, value: { type: 'consent.decision', runId: m.runId, callId: m.callId, allow: m.allow } };
     case 'tool.result':
       if (!str(m.runId) || !str(m.callId)) return { ok: false, error: 'tool.result requires runId and callId' };
-      return { ok: true, value: { type: 'tool.result', runId: m.runId, callId: m.callId, result: m.result, error: str(m.error) ? m.error : undefined } };
+      return {
+        ok: true,
+        value: {
+          type: 'tool.result',
+          runId: m.runId,
+          callId: m.callId,
+          result: m.result,
+          error: str(m.error) ? m.error : undefined,
+        },
+      };
     case 'run.cancel':
       if (!str(m.runId)) return { ok: false, error: 'run.cancel requires runId' };
       return { ok: true, value: { type: 'run.cancel', runId: m.runId } };

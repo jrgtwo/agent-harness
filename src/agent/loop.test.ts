@@ -1,18 +1,14 @@
 import { describe, it, expect, vi } from 'vitest';
 import { run, type ConsentFn } from './loop';
 import { ToolRegistry, type ToolDef } from './tools';
-import type { AgentEvent } from './events';
-import type { Message, ModelCallResult, ModelClient, ModelStreamHandlers, ModelToolSchema } from './types';
+import type { AgentEvent } from '../core/events';
+import type { Message, ModelCallResult, ModelClient, ModelStreamHandlers, ModelToolSchema } from '../core/types';
 
 /** A model whose responses are scripted, so we can exercise the loop with no real backend. */
 class ScriptedModel implements ModelClient {
   calls: Message[][] = [];
   constructor(private queue: ModelCallResult[]) {}
-  async chat(
-    messages: Message[],
-    _tools: ModelToolSchema[],
-    handlers?: ModelStreamHandlers,
-  ): Promise<ModelCallResult> {
+  async chat(messages: Message[], _tools: ModelToolSchema[], handlers?: ModelStreamHandlers): Promise<ModelCallResult> {
     this.calls.push(structuredClone(messages));
     const next = this.queue.shift();
     if (!next) throw new Error('ScriptedModel ran out of scripted responses');
@@ -254,7 +250,11 @@ describe('agent loop', () => {
       role: 'user' as const,
       content: `old ${i} ${'x'.repeat(300)}`,
     }));
-    const summarizer: ModelClient = { async chat() { return answer('SUMMARY'); } };
+    const summarizer: ModelClient = {
+      async chat() {
+        return answer('SUMMARY');
+      },
+    };
     const seen: Message[][] = [];
     const model: ModelClient = {
       async chat(messages) {
@@ -278,7 +278,9 @@ describe('agent loop', () => {
     expect(res.stoppedReason).toBe('answered');
     expect(events.some((e) => e.type === 'context.compacted')).toBe(true);
     const firstCall = seen[0]!;
-    expect(firstCall.some((m) => m.role === 'system' && m.content.includes('Summary of earlier conversation'))).toBe(true);
+    expect(firstCall.some((m) => m.role === 'system' && m.content.includes('Summary of earlier conversation'))).toBe(
+      true,
+    );
     expect(firstCall.some((m) => m.content.includes('old 11'))).toBe(true); // recent tail kept
     expect(firstCall.some((m) => m.content.includes('old 0'))).toBe(false); // oldest summarized away
   });

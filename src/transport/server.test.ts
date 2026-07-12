@@ -2,10 +2,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { WebSocket as WsWebSocket } from 'ws';
 import { createHarnessServer, type Agent, type HarnessServerHandle } from './server';
 import { HarnessClient, type HarnessClientOptions } from './client';
-import { ToolRegistry, type ToolDef } from './tools';
-import { Store } from './store';
-import type { AgentEvent } from './events';
-import type { Message, ModelCallResult, ModelClient, ModelStreamHandlers } from './types';
+import { ToolRegistry, type ToolDef } from '../agent/tools';
+import { Store } from '../store/store';
+import type { AgentEvent } from '../core/events';
+import type { Message, ModelCallResult, ModelClient, ModelStreamHandlers } from '../core/types';
 
 class ScriptedModel implements ModelClient {
   constructor(private queue: ModelCallResult[]) {}
@@ -24,7 +24,10 @@ const callTool = (id: string, name: string, args: object): ModelCallResult => ({
   finishReason: 'tool_calls',
 });
 
-function timeAgent(handler = vi.fn(() => ({ iso: '2026-07-11T00:00:00Z' }))): { agent: Agent; handler: typeof handler } {
+function timeAgent(handler = vi.fn(() => ({ iso: '2026-07-11T00:00:00Z' }))): {
+  agent: Agent;
+  handler: typeof handler;
+} {
   const tools = new ToolRegistry();
   const def: ToolDef = {
     name: 'get_time',
@@ -60,8 +63,7 @@ describe('harness WebSocket server', () => {
     let finished: (v: unknown) => void;
     const done = new Promise((r) => (finished = r));
 
-    let client: HarnessClient;
-    client = connectClient(server.port, {
+    const client = connectClient(server.port, {
       handlers: {
         onEvent: (runId, event) => {
           events.push(event);

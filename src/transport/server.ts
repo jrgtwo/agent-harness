@@ -1,9 +1,9 @@
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { AddressInfo } from 'node:net';
-import { run, type ConsentFn, type ContextConfig } from './loop';
-import type { Message, ModelClient } from './types';
-import type { ToolRegistry } from './tools';
-import type { Store } from './store';
+import { run, type ConsentFn, type ContextConfig } from '../agent/loop';
+import type { Message, ModelClient } from '../core/types';
+import type { ToolRegistry } from '../agent/tools';
+import type { Store } from '../store/store';
 import { parseClientMessage, type ServerMessage } from './protocol';
 
 /** An agent = config over the shared harness: a prompt + a tool set (+ later, model/context). */
@@ -135,7 +135,12 @@ function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map
             }
           })
           .catch((err) =>
-            send({ type: 'error', code: 'run_failed', message: (err as Error)?.message ?? String(err), runId: msg.runId }),
+            send({
+              type: 'error',
+              code: 'run_failed',
+              message: (err as Error)?.message ?? String(err),
+              runId: msg.runId,
+            }),
           )
           .finally(() => activeRuns.delete(msg.runId));
         return;
@@ -157,7 +162,11 @@ function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map
         return;
       }
       case 'session.load': {
-        send({ type: 'session.messages', sessionId: msg.sessionId, messages: opts.store?.getMessages(msg.sessionId) ?? [] });
+        send({
+          type: 'session.messages',
+          sessionId: msg.sessionId,
+          messages: opts.store?.getMessages(msg.sessionId) ?? [],
+        });
         return;
       }
       case 'session.delete': {

@@ -1,8 +1,8 @@
 // Public surface of the harness.
-export * from './types';
-export * from './events';
-export { OpenAICompatibleClient } from './openaiClient';
-export { ToolRegistry, type ToolDef, type ConsentMode, type ValidationResult } from './tools';
+export * from './core/types';
+export * from './core/events';
+export { OpenAICompatibleClient } from './model/openaiClient';
+export { ToolRegistry, type ToolDef, type ConsentMode, type ValidationResult } from './agent/tools';
 export {
   run,
   type RunOptions,
@@ -11,7 +11,7 @@ export {
   type ConsentRequest,
   type StopReason,
   type ContextConfig,
-} from './loop';
+} from './agent/loop';
 export {
   estimateTokens,
   capText,
@@ -20,13 +20,13 @@ export {
   summarizeMessages,
   type CompactParams,
   type CompactResult,
-} from './context';
-export { Store, type SessionInfo } from './store';
-export { createHarnessServer, type Agent, type HarnessServerOptions, type HarnessServerHandle } from './server';
-export { HarnessClient, type HarnessClientHandlers, type HarnessClientOptions } from './client';
+} from './agent/context';
+export { Store, type SessionInfo } from './store/store';
 export {
-  parseClientMessage,
-  type ClientMessage,
-  type ServerMessage,
-  type ClientToolDecl,
-} from './protocol';
+  createHarnessServer,
+  type Agent,
+  type HarnessServerOptions,
+  type HarnessServerHandle,
+} from './transport/server';
+export { HarnessClient, type HarnessClientHandlers, type HarnessClientOptions } from './transport/client';
+export { parseClientMessage, type ClientMessage, type ServerMessage, type ClientToolDecl } from './transport/protocol';

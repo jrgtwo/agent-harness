@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import type * as Sqlite from 'node:sqlite';
-import type { Message } from './types';
+import type { Message } from '../core/types';
 
 // node:sqlite is a newer builtin that bundlers (Vite/vitest) don't recognize; load it through the
 // real require so it's left as a runtime builtin. Loaded lazily (in the constructor) so importing
@@ -106,7 +106,14 @@ export class Store {
     );
     const now = Date.now();
     for (const m of messages) {
-      stmt.run(sessionId, m.role, m.content, m.toolCalls ? JSON.stringify(m.toolCalls) : null, m.toolCallId ?? null, now);
+      stmt.run(
+        sessionId,
+        m.role,
+        m.content,
+        m.toolCalls ? JSON.stringify(m.toolCalls) : null,
+        m.toolCallId ?? null,
+        now,
+      );
     }
   }
 
@@ -119,8 +126,7 @@ export class Store {
 
   getConfig(key: string): string | undefined {
     const row = this.db.prepare('SELECT value FROM config WHERE key = ?').get(key) as unknown as
-      | { value: string }
-      | undefined;
+      { value: string } | undefined;
     return row?.value;
   }
 

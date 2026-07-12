@@ -3,12 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rmSync } from 'node:fs';
 import { Store } from './store';
-import type { Message } from './types';
+import type { Message } from '../core/types';
 
 describe('Store', () => {
   it('creates a session once and is idempotent via ensureSession', () => {
     const s = new Store();
-    const a = s.ensureSession('s1', 'first title', 'assistant');
+    s.ensureSession('s1', 'first title', 'assistant');
     const b = s.ensureSession('s1', 'ignored title');
     expect(b.id).toBe('s1');
     expect(b.title).toBe('first title'); // not overwritten

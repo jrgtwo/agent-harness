@@ -15,8 +15,7 @@ const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
 const out = (s: string) => process.stdout.write(s);
 
-let client: HarnessClient;
-client = new HarnessClient(`ws://127.0.0.1:${port}`, token, {
+const client = new HarnessClient(`ws://127.0.0.1:${port}`, token, {
   WebSocketImpl: WsWebSocket as any,
   handlers: {
     onEvent: (runId, event) => {
@@ -64,6 +63,10 @@ client = new HarnessClient(`ws://127.0.0.1:${port}`, token, {
 });
 
 const agents = await client.connect();
-out(dim(`connected — agents: ${agents.join(', ')}${sessionId ? ` · session: ${sessionId} (memory on)` : ' · one-shot'}\n`));
+out(
+  dim(
+    `connected — agents: ${agents.join(', ')}${sessionId ? ` · session: ${sessionId} (memory on)` : ' · one-shot'}\n`,
+  ),
+);
 out(`\n${cyan('you:')} ${question}\n`);
 client.startRun(question, { sessionId });

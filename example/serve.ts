@@ -26,4 +26,6 @@ console.log(`model:  ${model} @ ${baseUrl}  [${how}]`);
 console.log(`store:  ${dbPath}`);
 console.log(`token:  ${token}`);
 console.log(`\nIn another terminal:  HARNESS_PORT=${handle.port} pnpm example "what time is it?"`);
-console.log(`Multi-turn memory:    SESSION_ID=demo pnpm example "my name is Jon"  then  SESSION_ID=demo pnpm example "what's my name?"`);
+console.log(
+  `Multi-turn memory:    SESSION_ID=demo pnpm example "my name is Jon"  then  SESSION_ID=demo pnpm example "what's my name?"`,
+);

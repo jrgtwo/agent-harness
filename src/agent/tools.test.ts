@@ -20,9 +20,7 @@ describe('ToolRegistry', () => {
     r.register([echo]);
     expect(r.get('echo')).toBe(echo);
     expect(r.names()).toEqual(['echo']);
-    expect(r.schemas()).toEqual([
-      { name: 'echo', description: 'echo a message', parameters: echo.params },
-    ]);
+    expect(r.schemas()).toEqual([{ name: 'echo', description: 'echo a message', parameters: echo.params }]);
   });
 
   it('validates good args', () => {

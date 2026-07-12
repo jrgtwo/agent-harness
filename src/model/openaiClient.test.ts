@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { OpenAICompatibleClient } from './openaiClient';
-import type { ModelProfile } from './types';
+import type { ModelProfile } from '../core/types';
 
 const profile: ModelProfile = { baseUrl: 'http://localhost:5174/v1', model: 'local' };
 
@@ -51,9 +51,10 @@ describe('OpenAICompatibleClient', () => {
     );
     const client = new OpenAICompatibleClient(profile, fetchImpl as unknown as typeof fetch);
 
-    const result = await client.chat([{ role: 'user', content: 'weather?' }], [
-      { name: 'web_search', description: 'search', parameters: { type: 'object' } },
-    ]);
+    const result = await client.chat(
+      [{ role: 'user', content: 'weather?' }],
+      [{ name: 'web_search', description: 'search', parameters: { type: 'object' } }],
+    );
 
     expect(result.finishReason).toBe('tool_calls');
     expect(result.toolCalls).toHaveLength(1);
@@ -69,9 +70,10 @@ describe('OpenAICompatibleClient', () => {
       sseResponse(['data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n', 'data: [DONE]\n']),
     );
     const client = new OpenAICompatibleClient(profile, fetchImpl as unknown as typeof fetch);
-    await client.chat([{ role: 'user', content: 'x' }], [
-      { name: 't', description: 'd', parameters: { type: 'object' } },
-    ]);
+    await client.chat(
+      [{ role: 'user', content: 'x' }],
+      [{ name: 't', description: 'd', parameters: { type: 'object' } }],
+    );
 
     const call = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
     expect(call[0]).toBe('http://localhost:5174/v1/chat/completions');

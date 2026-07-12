@@ -3,7 +3,7 @@
 A small, model-powered agent harness. The richness of any product built with it lives in **apps**
 on top — never stuffed into the harness itself.
 
-> Scope test, applied forever: *"would every app want this?"* If not, it's an app, not the harness.
+> Scope test, applied forever: _"would every app want this?"_ If not, it's an app, not the harness.
 
 ## What's here
 
@@ -43,6 +43,7 @@ pnpm example "what is 12 * (3 + 4)?"
 
 **Multi-turn memory** — set `SESSION_ID` to make consecutive runs share history (persisted in SQLite,
 so it survives a restart):
+
 ```
 SESSION_ID=demo pnpm example "my name is Jon"
 SESSION_ID=demo pnpm example "what's my name?"    # remembers

@@ -1,4 +1,4 @@
-import type { Message, ModelClient, ModelToolSchema } from './types';
+import type { Message, ModelClient, ModelToolSchema } from '../core/types';
 
 // Context handling: keep the prompt under the model's window, cap oversized tool output, and
 // fold live app-state into the system prompt each turn. All optional — off unless configured.
