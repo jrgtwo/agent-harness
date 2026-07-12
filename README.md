@@ -41,6 +41,13 @@ pnpm example "what time is it right now?"
 pnpm example "what is 12 * (3 + 4)?"
 ```
 
+**Multi-turn memory** — set `SESSION_ID` to make consecutive runs share history (persisted in SQLite,
+so it survives a restart):
+```
+SESSION_ID=demo pnpm example "my name is Jon"
+SESSION_ID=demo pnpm example "what's my name?"    # remembers
+```
+
 Env: `MODEL_BASE_URL`, `MODEL_NAME` (default `local`), `MODEL_API_KEY` (for a remote endpoint),
 `HARNESS_TOKEN` (default `dev-token`), `HARNESS_PORT` (default `4000`).
 

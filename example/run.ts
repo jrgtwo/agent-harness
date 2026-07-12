@@ -6,6 +6,7 @@ import { HarnessClient } from '../src/index';
 
 const token = process.env.HARNESS_TOKEN ?? 'dev-token';
 const port = Number(process.env.HARNESS_PORT ?? 4000);
+const sessionId = process.env.SESSION_ID; // set this to keep memory across invocations
 const question = process.argv.slice(2).join(' ') || 'What time is it right now?';
 
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
@@ -63,6 +64,6 @@ client = new HarnessClient(`ws://127.0.0.1:${port}`, token, {
 });
 
 const agents = await client.connect();
-out(dim(`connected — agents: ${agents.join(', ')}\n`));
+out(dim(`connected — agents: ${agents.join(', ')}${sessionId ? ` · session: ${sessionId} (memory on)` : ' · one-shot'}\n`));
 out(`\n${cyan('you:')} ${question}\n`);
-client.startRun(question);
+client.startRun(question, { sessionId });

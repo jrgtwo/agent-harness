@@ -1,5 +1,7 @@
 import type { AgentEvent } from './events';
 import type { ClientMessage, ClientToolDecl, ServerMessage } from './protocol';
+import type { Message } from './types';
+import type { SessionInfo } from './store';
 
 /**
  * The thin client SDK an app uses to talk to the harness. In the browser it uses the global
@@ -19,6 +21,9 @@ export interface HarnessClientHandlers {
   onReady?: (agents: string[]) => void;
   onEvent?: (runId: string, event: AgentEvent) => void;
   onToolInvoke?: (req: { runId: string; callId: string; name: string; args: unknown }) => void;
+  onSessions?: (sessions: SessionInfo[]) => void;
+  onSessionMessages?: (sessionId: string, messages: Message[]) => void;
+  onSessionDeleted?: (sessionId: string) => void;
   onError?: (err: { code: string; message: string; runId?: string }) => void;
 }
 
@@ -78,6 +83,15 @@ export class HarnessClient {
       case 'tool.invoke':
         this.handlers.onToolInvoke?.(msg);
         break;
+      case 'sessions':
+        this.handlers.onSessions?.(msg.sessions);
+        break;
+      case 'session.messages':
+        this.handlers.onSessionMessages?.(msg.sessionId, msg.messages);
+        break;
+      case 'session.deleted':
+        this.handlers.onSessionDeleted?.(msg.sessionId);
+        break;
       case 'error':
         this.handlers.onError?.(msg);
         break;
@@ -104,6 +118,18 @@ export class HarnessClient {
 
   cancel(runId: string): void {
     this.send({ type: 'run.cancel', runId });
+  }
+
+  listSessions(): void {
+    this.send({ type: 'session.list' });
+  }
+
+  loadSession(sessionId: string): void {
+    this.send({ type: 'session.load', sessionId });
+  }
+
+  deleteSession(sessionId: string): void {
+    this.send({ type: 'session.delete', sessionId });
   }
 
   close(): void {

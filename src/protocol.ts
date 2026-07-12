@@ -1,4 +1,6 @@
 import type { AgentEvent } from './events';
+import type { Message } from './types';
+import type { SessionInfo } from './store';
 
 /**
  * The wire contract between an app and the harness sidecar. One WebSocket per connection;
@@ -19,12 +21,18 @@ export type ClientMessage =
   | { type: 'run.start'; runId: string; input: string; agent?: string; sessionId?: string }
   | { type: 'consent.decision'; runId: string; callId: string; allow: boolean }
   | { type: 'tool.result'; runId: string; callId: string; result?: unknown; error?: string }
-  | { type: 'run.cancel'; runId: string };
+  | { type: 'run.cancel'; runId: string }
+  | { type: 'session.list' }
+  | { type: 'session.load'; sessionId: string }
+  | { type: 'session.delete'; sessionId: string };
 
 export type ServerMessage =
   | { type: 'ready'; agents: string[] }
   | { type: 'run.event'; runId: string; event: AgentEvent }
   | { type: 'tool.invoke'; runId: string; callId: string; name: string; args: unknown }
+  | { type: 'sessions'; sessions: SessionInfo[] }
+  | { type: 'session.messages'; sessionId: string; messages: Message[] }
+  | { type: 'session.deleted'; sessionId: string }
   | { type: 'error'; code: string; message: string; runId?: string };
 
 type Parsed<T> = { ok: true; value: T } | { ok: false; error: string };
@@ -63,6 +71,14 @@ export function parseClientMessage(raw: unknown): Parsed<ClientMessage> {
     case 'run.cancel':
       if (!str(m.runId)) return { ok: false, error: 'run.cancel requires runId' };
       return { ok: true, value: { type: 'run.cancel', runId: m.runId } };
+    case 'session.list':
+      return { ok: true, value: { type: 'session.list' } };
+    case 'session.load':
+      if (!str(m.sessionId)) return { ok: false, error: 'session.load requires sessionId' };
+      return { ok: true, value: { type: 'session.load', sessionId: m.sessionId } };
+    case 'session.delete':
+      if (!str(m.sessionId)) return { ok: false, error: 'session.delete requires sessionId' };
+      return { ok: true, value: { type: 'session.delete', sessionId: m.sessionId } };
     default:
       return { ok: false, error: `unknown message type: ${String(m.type)}` };
   }

@@ -1,8 +1,9 @@
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { AddressInfo } from 'node:net';
 import { run, type ConsentFn } from './loop';
-import type { ModelClient } from './types';
+import type { Message, ModelClient } from './types';
 import type { ToolRegistry } from './tools';
+import type { Store } from './store';
 import { parseClientMessage, type ServerMessage } from './protocol';
 
 /** An agent = config over the shared harness: a prompt + a tool set (+ later, model/context). */
@@ -17,6 +18,8 @@ export interface HarnessServerOptions {
   agents: Agent[];
   /** Local shared token an app must present on `hello`. Keeps random localhost pages out. */
   token: string;
+  /** Optional persistence. When provided (and a run carries a sessionId), chat is multi-turn. */
+  store?: Store;
   port?: number;
   host?: string;
 }
@@ -99,8 +102,17 @@ function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map
         const controller = new AbortController();
         activeRuns.set(msg.runId, controller);
 
-        const requestConsent: ConsentFn = ({ runId, callId }) =>
+        const requestConsent: ConsentFn = ({ callId }) =>
           new Promise<boolean>((resolve) => pendingConsent.set(callId, resolve));
+
+        // Load prior history for a persisted session; new messages get saved after the run.
+        const store = opts.store;
+        const sessionId = msg.sessionId;
+        let history: Message[] = [];
+        if (store && sessionId) {
+          store.ensureSession(sessionId, msg.input.slice(0, 60), agent.name);
+          history = store.getMessages(sessionId);
+        }
 
         run({
           runId: msg.runId,
@@ -108,10 +120,18 @@ function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map
           systemPrompt: agent.systemPrompt,
           model: opts.model,
           tools: agent.tools,
+          history,
           emit: (event) => send({ type: 'run.event', runId: msg.runId, event }),
           requestConsent,
           signal: controller.signal,
         })
+          .then((result) => {
+            if (store && sessionId) {
+              // Everything after [system, ...priorHistory] is this turn's new messages.
+              store.appendMessages(sessionId, result.messages.slice(1 + history.length));
+              store.touchSession(sessionId);
+            }
+          })
           .catch((err) =>
             send({ type: 'error', code: 'run_failed', message: (err as Error)?.message ?? String(err), runId: msg.runId }),
           )
@@ -128,6 +148,19 @@ function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map
       }
       case 'run.cancel': {
         activeRuns.get(msg.runId)?.abort();
+        return;
+      }
+      case 'session.list': {
+        send({ type: 'sessions', sessions: opts.store?.listSessions() ?? [] });
+        return;
+      }
+      case 'session.load': {
+        send({ type: 'session.messages', sessionId: msg.sessionId, messages: opts.store?.getMessages(msg.sessionId) ?? [] });
+        return;
+      }
+      case 'session.delete': {
+        opts.store?.deleteSession(msg.sessionId);
+        send({ type: 'session.deleted', sessionId: msg.sessionId });
         return;
       }
       case 'hello':

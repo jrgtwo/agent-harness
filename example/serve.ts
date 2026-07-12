@@ -1,4 +1,6 @@
-import { createHarnessServer, OpenAICompatibleClient } from '../src/index';
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { createHarnessServer, OpenAICompatibleClient, Store } from '../src/index';
 import { exampleAgent } from './agent';
 import { resolveModelUrl } from './resolveModelUrl';
 
@@ -11,11 +13,17 @@ const model = process.env.MODEL_NAME ?? 'local';
 const apiKey = process.env.MODEL_API_KEY;
 const token = process.env.HARNESS_TOKEN ?? 'dev-token';
 const port = Number(process.env.HARNESS_PORT ?? 4000);
+const dbPath = process.env.HARNESS_DB ?? 'data/harness.sqlite';
+
+mkdirSync(dirname(dbPath), { recursive: true });
+const store = new Store(dbPath);
 
 const client = new OpenAICompatibleClient({ baseUrl, model, apiKey });
-const handle = await createHarnessServer({ model: client, agents: [exampleAgent()], token, port });
+const handle = await createHarnessServer({ model: client, agents: [exampleAgent()], token, port, store });
 
 console.log(`harness sidecar listening on ws://127.0.0.1:${handle.port}`);
 console.log(`model:  ${model} @ ${baseUrl}  [${how}]`);
+console.log(`store:  ${dbPath}`);
 console.log(`token:  ${token}`);
 console.log(`\nIn another terminal:  HARNESS_PORT=${handle.port} pnpm example "what time is it?"`);
+console.log(`Multi-turn memory:    SESSION_ID=demo pnpm example "my name is Jon"  then  SESSION_ID=demo pnpm example "what's my name?"`);

@@ -5,10 +5,10 @@
   "type": "module",
   "description": "A trim, model-powered agent harness. Apps are built on top of it, not stuffed into it.",
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "NODE_NO_WARNINGS=1 vitest run",
+    "test:watch": "NODE_NO_WARNINGS=1 vitest",
     "typecheck": "tsc --noEmit",
-    "serve": "tsx example/serve.ts",
+    "serve": "NODE_NO_WARNINGS=1 tsx example/serve.ts",
     "example": "tsx example/run.ts"
   },
   "dependencies": {

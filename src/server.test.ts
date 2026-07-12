@@ -3,6 +3,7 @@ import { WebSocket as WsWebSocket } from 'ws';
 import { createHarnessServer, type Agent, type HarnessServerHandle } from './server';
 import { HarnessClient, type HarnessClientOptions } from './client';
 import { ToolRegistry, type ToolDef } from './tools';
+import { Store } from './store';
 import type { AgentEvent } from './events';
 import type { Message, ModelCallResult, ModelClient, ModelStreamHandlers } from './types';
 
@@ -125,5 +126,45 @@ describe('harness WebSocket server', () => {
     });
     expect(code).toBe('bad_message');
     raw.close();
+  });
+
+  it('threads prior session history into a later run when a store is used', async () => {
+    const seen: Message[][] = [];
+    const model: ModelClient = {
+      async chat(messages) {
+        seen.push(structuredClone(messages));
+        return answer('ok');
+      },
+    };
+    const { agent } = timeAgent();
+    const store = new Store();
+    server = await createHarnessServer({ model, agents: [agent], token: 'secret', store });
+
+    const finishers = new Map<string, () => void>();
+    const client = connectClient(server.port, {
+      handlers: {
+        onEvent: (runId, event) => {
+          if (event.type === 'run.finished') finishers.get(runId)?.();
+        },
+      },
+    });
+    await client.connect();
+
+    const runOnce = (input: string) => {
+      const runId = crypto.randomUUID();
+      const done = new Promise<void>((res) => finishers.set(runId, res));
+      client.startRun(input, { runId, sessionId: 's1' });
+      return done;
+    };
+
+    await runOnce('my name is Jon');
+    await runOnce('what is my name?');
+
+    const second = seen[1]!;
+    expect(second.some((m) => m.role === 'user' && m.content === 'my name is Jon')).toBe(true);
+    expect(second.some((m) => m.role === 'assistant' && m.content === 'ok')).toBe(true);
+    expect(second.some((m) => m.role === 'user' && m.content === 'what is my name?')).toBe(true);
+    expect(store.getMessages('s1')).toHaveLength(4); // 2 user + 2 assistant
+    client.close();
   });
 });
