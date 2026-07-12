@@ -4,7 +4,21 @@
   "private": true,
   "type": "module",
   "description": "A trim, model-powered agent harness. Apps are built on top of it, not stuffed into it.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
     "test": "NODE_NO_WARNINGS=1 vitest run",
     "test:watch": "NODE_NO_WARNINGS=1 vitest",
     "typecheck": "tsc --noEmit",
@@ -28,6 +42,7 @@
     "eslint-config-prettier": "^9.1.0",
     "husky": "^9.1.7",
     "prettier": "^3.4.0",
+    "tsup": "^8.3.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.15.0",
