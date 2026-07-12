@@ -1,3 +1,4 @@
+import { capText, compactHistory, estimateTokens, injectLiveState, summarizeMessages } from './context';
 import type { EventSink } from './events';
 import type { Message, ModelClient, ToolCall } from './types';
 import type { ToolDef, ToolRegistry } from './tools';
@@ -11,6 +12,20 @@ export interface ConsentRequest {
 
 /** How the harness asks a human (via the app) to approve a gated tool call. */
 export type ConsentFn = (req: ConsentRequest) => Promise<boolean>;
+
+/** Optional context management. All off unless set. */
+export interface ContextConfig {
+  /** Token budget for the whole prompt; enables history compaction when set. */
+  window?: number;
+  /** Messages kept verbatim before summarizing older ones (default 8). */
+  keepRecent?: number;
+  /** Cap on a single tool result's size in chars (default 4000). */
+  maxToolResultChars?: number;
+  /** Live app-state snapshot folded into the system prompt each turn (never persisted). */
+  provider?: () => string;
+  /** Model used for summaries (defaults to the run's model). */
+  summarizeModel?: ModelClient;
+}
 
 export interface RunOptions {
   runId: string;
@@ -26,12 +41,15 @@ export interface RunOptions {
   maxIters?: number;
   /** Stop after an identical tool call repeats more than this many times. */
   repeatLimit?: number;
+  context?: ContextConfig;
 }
 
 export type StopReason = 'answered' | 'max_iters' | 'loop_break' | 'aborted' | 'error';
 
 export interface RunResult {
   messages: Message[];
+  /** Just this turn's new messages (user input + everything produced) — what to persist. */
+  newMessages: Message[];
   content: string;
   stoppedReason: StopReason;
 }
@@ -44,19 +62,48 @@ export async function run(opts: RunOptions): Promise<RunResult> {
   const { runId, model, tools, emit, signal } = opts;
   const maxIters = opts.maxIters ?? 8;
   const repeatLimit = opts.repeatLimit ?? 3;
+  const ctx = opts.context ?? {};
+  const keepRecent = ctx.keepRecent ?? 8;
+  const maxToolResultChars = ctx.maxToolResultChars ?? 4000;
 
-  const messages: Message[] = [
-    { role: 'system', content: opts.systemPrompt },
-    ...(opts.history ?? []),
-    { role: 'user', content: opts.input },
-  ];
-
+  let history = opts.history ?? [];
+  const userMsg: Message = { role: 'user', content: opts.input };
   const callCounts = new Map<string, number>();
+
+  let messages: Message[] = [];
+  let newStart = 0;
+  const done = (content: string, stoppedReason: StopReason): RunResult => ({
+    messages,
+    newMessages: messages.slice(newStart),
+    content,
+    stoppedReason,
+  });
+
   emit({ type: 'run.started', runId });
 
   try {
+    // Keep history under budget: recent verbatim, older folded into a summary.
+    if (ctx.window) {
+      const sys: Message = { role: 'system', content: injectLiveState(opts.systemPrompt, ctx.provider?.()) };
+      const fixedTokens = estimateTokens([sys, userMsg], tools.schemas());
+      const compacted = await compactHistory(history, {
+        budget: ctx.window,
+        keepRecent,
+        fixedTokens,
+        summarize: (old) => summarizeMessages(ctx.summarizeModel ?? model, old),
+      });
+      if (compacted.summarized > 0) emit({ type: 'context.compacted', runId, summarized: compacted.summarized });
+      history = compacted.history;
+    }
+
+    messages = [{ role: 'system', content: opts.systemPrompt }, ...history, userMsg];
+    newStart = 1 + history.length; // index of userMsg; from here on is this turn's new messages
+
     for (let iter = 0; iter < maxIters; iter++) {
-      if (signal?.aborted) return { messages, content: '', stoppedReason: 'aborted' };
+      if (signal?.aborted) return done('', 'aborted');
+
+      // Refresh transient live-state into the system slot each turn.
+      messages[0] = { role: 'system', content: injectLiveState(opts.systemPrompt, ctx.provider?.()) };
 
       emit({ type: 'model.call.started', runId, iter });
       const result = await model.chat(
@@ -68,13 +115,7 @@ export async function run(opts: RunOptions): Promise<RunResult> {
         },
         signal,
       );
-      emit({
-        type: 'model.call.finished',
-        runId,
-        iter,
-        finishReason: result.finishReason,
-        usage: result.usage,
-      });
+      emit({ type: 'model.call.finished', runId, iter, finishReason: result.finishReason, usage: result.usage });
 
       messages.push({
         role: 'assistant',
@@ -84,7 +125,7 @@ export async function run(opts: RunOptions): Promise<RunResult> {
 
       if (result.toolCalls.length === 0) {
         emit({ type: 'run.finished', runId, result: result.content });
-        return { messages, content: result.content, stoppedReason: 'answered' };
+        return done(result.content, 'answered');
       }
 
       for (const call of result.toolCalls) {
@@ -94,22 +135,22 @@ export async function run(opts: RunOptions): Promise<RunResult> {
         if (n > repeatLimit) {
           const msg = `Stopped: repeatedly called ${call.name} with identical arguments without making progress.`;
           emit({ type: 'run.finished', runId, result: msg });
-          return { messages, content: msg, stoppedReason: 'loop_break' };
+          return done(msg, 'loop_break');
         }
-        messages.push(await dispatch(call, opts));
+        messages.push(await dispatch(call, opts, maxToolResultChars));
       }
     }
 
     const msg = `Stopped: reached the step budget (${maxIters} iterations) without a final answer.`;
     emit({ type: 'run.finished', runId, result: msg });
-    return { messages, content: msg, stoppedReason: 'max_iters' };
+    return done(msg, 'max_iters');
   } catch (err) {
     if (signal?.aborted || (err as Error)?.name === 'AbortError') {
-      return { messages, content: '', stoppedReason: 'aborted' };
+      return done('', 'aborted');
     }
     const error = (err as Error)?.message ?? String(err);
     emit({ type: 'run.error', runId, error });
-    return { messages, content: '', stoppedReason: 'error' };
+    return done('', 'error');
   }
 }
 
@@ -118,12 +159,12 @@ export async function run(opts: RunOptions): Promise<RunResult> {
  * (bad JSON, unknown tool, invalid args, denial, handler throw) becomes a *structured result*,
  * never an exception — so the model always gets something it can react to.
  */
-async function dispatch(call: ToolCall, opts: RunOptions): Promise<Message> {
+async function dispatch(call: ToolCall, opts: RunOptions, maxToolResultChars: number): Promise<Message> {
   const { runId, tools, emit, requestConsent } = opts;
   const toolMessage = (payload: unknown): Message => ({
     role: 'tool',
     toolCallId: call.id,
-    content: typeof payload === 'string' ? payload : JSON.stringify(payload),
+    content: capText(typeof payload === 'string' ? payload : JSON.stringify(payload), maxToolResultChars),
   });
 
   let args: unknown;

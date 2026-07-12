@@ -1,6 +1,6 @@
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { AddressInfo } from 'node:net';
-import { run, type ConsentFn } from './loop';
+import { run, type ConsentFn, type ContextConfig } from './loop';
 import type { Message, ModelClient } from './types';
 import type { ToolRegistry } from './tools';
 import type { Store } from './store';
@@ -11,6 +11,8 @@ export interface Agent {
   name: string;
   systemPrompt: string;
   tools: ToolRegistry;
+  /** Optional context management (budget/summary/tool-caps/live-state). */
+  context?: ContextConfig;
 }
 
 export interface HarnessServerOptions {
@@ -121,14 +123,14 @@ function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map
           model: opts.model,
           tools: agent.tools,
           history,
+          context: agent.context,
           emit: (event) => send({ type: 'run.event', runId: msg.runId, event }),
           requestConsent,
           signal: controller.signal,
         })
           .then((result) => {
             if (store && sessionId) {
-              // Everything after [system, ...priorHistory] is this turn's new messages.
-              store.appendMessages(sessionId, result.messages.slice(1 + history.length));
+              store.appendMessages(sessionId, result.newMessages);
               store.touchSession(sessionId);
             }
           })

@@ -197,4 +197,89 @@ describe('agent loop', () => {
     });
     expect(res.stoppedReason).toBe('max_iters');
   });
+
+  it('caps oversized tool results before feeding them back', async () => {
+    const tools = new ToolRegistry();
+    tools.register([
+      { name: 'big', description: 'd', mode: 'auto', params: { type: 'object' }, handler: () => 'Z'.repeat(9000) },
+    ]);
+    const seen: Message[][] = [];
+    const model: ModelClient = {
+      async chat(messages) {
+        seen.push(structuredClone(messages));
+        return seen.length === 1 ? callTool('c', 'big', {}) : answer('ok');
+      },
+    };
+    const { emit } = collect();
+    await run({
+      runId: 'r',
+      input: 'go',
+      systemPrompt: 's',
+      model,
+      tools,
+      emit,
+      requestConsent: allow,
+      context: { maxToolResultChars: 100 },
+    });
+    const toolMsg = seen[1]!.find((m) => m.role === 'tool');
+    expect(toolMsg!.content.length).toBeLessThan(200);
+    expect(toolMsg!.content).toMatch(/truncated/);
+  });
+
+  it('injects live-state into the system prompt each turn', async () => {
+    let tick = 0;
+    const seen: Message[][] = [];
+    const model: ModelClient = {
+      async chat(messages) {
+        seen.push(structuredClone(messages));
+        return answer('done');
+      },
+    };
+    const { emit } = collect();
+    await run({
+      runId: 'r',
+      input: 'go',
+      systemPrompt: 'base',
+      model,
+      tools: new ToolRegistry(),
+      emit,
+      requestConsent: allow,
+      context: { provider: () => `tick=${tick++}` },
+    });
+    expect(seen[0]![0]!.content).toBe('base\n\ntick=0');
+  });
+
+  it('compacts oversized history before the first model call', async () => {
+    const bigHistory: Message[] = Array.from({ length: 12 }, (_, i) => ({
+      role: 'user' as const,
+      content: `old ${i} ${'x'.repeat(300)}`,
+    }));
+    const summarizer: ModelClient = { async chat() { return answer('SUMMARY'); } };
+    const seen: Message[][] = [];
+    const model: ModelClient = {
+      async chat(messages) {
+        seen.push(structuredClone(messages));
+        return answer('final');
+      },
+    };
+    const { events, emit } = collect();
+    const res = await run({
+      runId: 'r',
+      input: 'now',
+      systemPrompt: 's',
+      model,
+      tools: new ToolRegistry(),
+      emit,
+      requestConsent: allow,
+      history: bigHistory,
+      context: { window: 50, keepRecent: 3, summarizeModel: summarizer },
+    });
+
+    expect(res.stoppedReason).toBe('answered');
+    expect(events.some((e) => e.type === 'context.compacted')).toBe(true);
+    const firstCall = seen[0]!;
+    expect(firstCall.some((m) => m.role === 'system' && m.content.includes('Summary of earlier conversation'))).toBe(true);
+    expect(firstCall.some((m) => m.content.includes('old 11'))).toBe(true); // recent tail kept
+    expect(firstCall.some((m) => m.content.includes('old 0'))).toBe(false); // oldest summarized away
+  });
 });

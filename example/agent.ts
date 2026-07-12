@@ -14,5 +14,10 @@ export function exampleAgent(): Agent {
       'After a tool returns, use its result to answer the user concisely.',
     ].join(' '),
     tools,
+    context: {
+      window: Number(process.env.MODEL_CONTEXT_WINDOW ?? 8192),
+      keepRecent: 8,
+      maxToolResultChars: 4000,
+    },
   };
 }

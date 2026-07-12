@@ -25,6 +25,7 @@ export type AgentEvent =
       error?: string;
       ms: number;
     }
+  | { type: 'context.compacted'; runId: string; summarized: number }
   | { type: 'run.finished'; runId: string; result: unknown }
   | { type: 'run.error'; runId: string; error: string };
 
