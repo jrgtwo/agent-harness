@@ -89,4 +89,33 @@ describe('OpenAICompatibleClient', () => {
     const client = new OpenAICompatibleClient(profile, fetchImpl as unknown as typeof fetch);
     await expect(client.chat([{ role: 'user', content: 'x' }], [])).rejects.toThrow(/500/);
   });
+
+  it('falls back to a <tool_call> text block in content when there are no structured tool_calls', async () => {
+    const fetchImpl = vi.fn(async () =>
+      sseResponse([
+        'data: {"choices":[{"delta":{"content":"<tool_call><function=fetch_url><parameter=url>https://x.com</parameter></function></tool_call>"}}]}\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+        'data: [DONE]\n',
+      ]),
+    );
+    const client = new OpenAICompatibleClient(profile, fetchImpl as unknown as typeof fetch);
+    const result = await client.chat([{ role: 'user', content: 'x' }], []);
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0]).toMatchObject({ name: 'fetch_url', arguments: '{"url":"https://x.com"}' });
+    expect(result.content).toBe('');
+  });
+
+  it('rescues a tool call drafted in reasoning when content is empty', async () => {
+    const fetchImpl = vi.fn(async () =>
+      sseResponse([
+        'data: {"choices":[{"delta":{"reasoning_content":"hmm <tool_call><function=web_search><parameter=query>rodgers</parameter></function></tool_call>"}}]}\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+        'data: [DONE]\n',
+      ]),
+    );
+    const client = new OpenAICompatibleClient(profile, fetchImpl as unknown as typeof fetch);
+    const result = await client.chat([{ role: 'user', content: 'x' }], []);
+    expect(result.toolCalls).toHaveLength(1);
+    expect(result.toolCalls[0]).toMatchObject({ name: 'web_search', arguments: '{"query":"rodgers"}' });
+  });
 });

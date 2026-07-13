@@ -8,6 +8,7 @@ import type {
   ToolCall,
   Usage,
 } from '../core/types';
+import { parseTextToolCalls, TOOL_CALL_BLOCK } from './textToolCalls';
 
 type FetchLike = typeof fetch;
 
@@ -73,6 +74,7 @@ async function readStream(body: ReadableStream<Uint8Array>, handlers?: ModelStre
   const decoder = new TextDecoder();
   let buffer = '';
   let content = '';
+  let reasoning = '';
   let finishReason = 'stop';
   let usage: Usage | undefined;
   const parts = new Map<number, { id: string; name: string; arguments: string }>();
@@ -101,6 +103,7 @@ async function readStream(body: ReadableStream<Uint8Array>, handlers?: ModelStre
       handlers?.onToken?.(delta.content);
     }
     if (typeof delta.reasoning_content === 'string' && delta.reasoning_content.length) {
+      reasoning += delta.reasoning_content;
       handlers?.onThinking?.(delta.reasoning_content);
     }
     if (Array.isArray(delta.tool_calls)) {
@@ -134,11 +137,29 @@ async function readStream(body: ReadableStream<Uint8Array>, handlers?: ModelStre
   const rest = buffer.trim();
   if (rest.startsWith('data:')) handleData(rest.slice('data:'.length).trim());
 
-  const toolCalls: ToolCall[] = [...parts.entries()]
+  let toolCalls: ToolCall[] = [...parts.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([, c]) => ({ id: c.id || crypto.randomUUID(), name: c.name, arguments: c.arguments }));
 
-  return { content, toolCalls, finishReason, usage };
+  let finalContent = content;
+  // Fallback for models that emit tool calls as <tool_call> TEXT rather than the structured
+  // tool_calls field. Only runs when nothing structured came back, so well-behaved models are
+  // untouched. Prefer content; if content is empty, rescue a call the model drafted in its
+  // reasoning. Consent still gates each resulting call.
+  if (toolCalls.length === 0) {
+    const fromContent = parseTextToolCalls(content);
+    if (fromContent.length) {
+      toolCalls = fromContent.map((c) => ({ id: crypto.randomUUID(), name: c.name, arguments: c.arguments }));
+      finalContent = content.replace(TOOL_CALL_BLOCK, '').trim();
+    } else if (!content.trim()) {
+      const fromReasoning = parseTextToolCalls(reasoning);
+      if (fromReasoning.length) {
+        toolCalls = fromReasoning.map((c) => ({ id: crypto.randomUUID(), name: c.name, arguments: c.arguments }));
+      }
+    }
+  }
+
+  return { content: finalContent, toolCalls, finishReason, usage };
 }
 
 function toWire(m: Message): WireMessage {
