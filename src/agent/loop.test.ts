@@ -1,15 +1,18 @@
 import { describe, it, expect, vi } from 'vitest';
 import { run, type ConsentFn } from './loop';
 import { ToolRegistry, type ToolDef } from './tools';
+import type { ClientToolDecl } from '../transport/protocol';
 import type { AgentEvent } from '../core/events';
 import type { Message, ModelCallResult, ModelClient, ModelStreamHandlers, ModelToolSchema } from '../core/types';
 
 /** A model whose responses are scripted, so we can exercise the loop with no real backend. */
 class ScriptedModel implements ModelClient {
   calls: Message[][] = [];
+  toolSchemas: ModelToolSchema[][] = [];
   constructor(private queue: ModelCallResult[]) {}
-  async chat(messages: Message[], _tools: ModelToolSchema[], handlers?: ModelStreamHandlers): Promise<ModelCallResult> {
+  async chat(messages: Message[], tools: ModelToolSchema[], handlers?: ModelStreamHandlers): Promise<ModelCallResult> {
     this.calls.push(structuredClone(messages));
+    this.toolSchemas.push(tools);
     const next = this.queue.shift();
     if (!next) throw new Error('ScriptedModel ran out of scripted responses');
     if (next.content) handlers?.onToken?.(next.content);
@@ -34,6 +37,16 @@ function echoTool(
     mode,
     params: { type: 'object', properties: { msg: { type: 'string' } }, required: ['msg'], additionalProperties: false },
     handler,
+  };
+}
+
+/** A client-side tool declaration (handler lives in the app UI, invoked over RPC). */
+function clientDecl(mode: ClientToolDecl['mode'] = 'confirm'): ClientToolDecl {
+  return {
+    name: 'select_thing',
+    description: 'select a thing in the UI',
+    params: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'], additionalProperties: false },
+    mode,
   };
 }
 
@@ -243,6 +256,120 @@ describe('agent loop', () => {
       context: { provider: () => `tick=${tick++}` },
     });
     expect(seen[0]![0]!.content).toBe('base\n\ntick=0');
+  });
+
+  it('offers client-tool schemas to the model and routes the call through invokeClientTool', async () => {
+    const model = new ScriptedModel([callTool('c1', 'select_thing', { name: 'X' }), answer('done')]);
+    const invokeClientTool = vi.fn(async () => ({ result: { picked: 'X' } }));
+    const { emit } = collect();
+
+    const res = await run({
+      runId: 'r',
+      input: 'go',
+      systemPrompt: 's',
+      model,
+      tools: new ToolRegistry(),
+      emit,
+      requestConsent: allow,
+      clientTools: [clientDecl()],
+      invokeClientTool,
+    });
+
+    expect(res.stoppedReason).toBe('answered');
+    // the model was offered the client tool's schema
+    expect(model.toolSchemas[0]!.some((t) => t.name === 'select_thing')).toBe(true);
+    // the call was routed through the client bridge with the right payload
+    expect(invokeClientTool).toHaveBeenCalledWith({ runId: 'r', callId: 'c1', name: 'select_thing', args: { name: 'X' } });
+    // the client's result was fed back to the model
+    const toolMsg = model.calls[1]!.find((m) => m.role === 'tool');
+    expect(toolMsg?.content).toContain('picked');
+  });
+
+  it('gates a confirm-mode client tool through consent and feeds a denial back', async () => {
+    const model = new ScriptedModel([callTool('c1', 'select_thing', { name: 'X' }), answer('ok')]);
+    const invokeClientTool = vi.fn(async () => ({ result: {} }));
+    const { events, emit } = collect();
+
+    await run({
+      runId: 'r',
+      input: 'go',
+      systemPrompt: 's',
+      model,
+      tools: new ToolRegistry(),
+      emit,
+      requestConsent: deny,
+      clientTools: [clientDecl()],
+      invokeClientTool,
+    });
+
+    expect(invokeClientTool).not.toHaveBeenCalled();
+    expect(events.find((e) => e.type === 'consent.decided')).toMatchObject({ allow: false });
+    const toolMsg = model.calls[1]!.find((m) => m.role === 'tool');
+    expect(toolMsg?.content).toContain('denied');
+  });
+
+  it('skips consent for an auto-mode client tool', async () => {
+    const model = new ScriptedModel([callTool('c1', 'select_thing', { name: 'X' }), answer('done')]);
+    const invokeClientTool = vi.fn(async () => ({ result: { ok: true } }));
+    const { events, emit } = collect();
+
+    await run({
+      runId: 'r',
+      input: 'go',
+      systemPrompt: 's',
+      model,
+      tools: new ToolRegistry(),
+      emit,
+      requestConsent: deny, // would deny, but auto mode bypasses consent
+      clientTools: [clientDecl('auto')],
+      invokeClientTool,
+    });
+
+    expect(invokeClientTool).toHaveBeenCalled();
+    expect(events.some((e) => e.type === 'consent.requested')).toBe(false);
+  });
+
+  it('feeds a client-tool error back to the model', async () => {
+    const model = new ScriptedModel([callTool('c1', 'select_thing', { name: 'Z' }), answer('ok')]);
+    const invokeClientTool = vi.fn(async () => ({ error: 'no player named "Z" found' }));
+    const { emit } = collect();
+
+    await run({
+      runId: 'r',
+      input: 'go',
+      systemPrompt: 's',
+      model,
+      tools: new ToolRegistry(),
+      emit,
+      requestConsent: allow,
+      clientTools: [clientDecl()],
+      invokeClientTool,
+    });
+
+    const toolMsg = model.calls[1]!.find((m) => m.role === 'tool');
+    expect(toolMsg?.content).toContain('no player named');
+  });
+
+  it('feeds a validation error back for bad client-tool args without invoking the client', async () => {
+    const model = new ScriptedModel([callTool('c1', 'select_thing', { wrong: 1 }), answer('ok')]);
+    const invokeClientTool = vi.fn(async () => ({ result: {} }));
+    const { emit } = collect();
+
+    await run({
+      runId: 'r',
+      input: 'go',
+      systemPrompt: 's',
+      model,
+      tools: new ToolRegistry(),
+      emit,
+      requestConsent: allow,
+      clientTools: [clientDecl()],
+      invokeClientTool,
+    });
+
+    expect(invokeClientTool).not.toHaveBeenCalled();
+    const toolMsg = model.calls[1]!.find((m) => m.role === 'tool');
+    expect(toolMsg?.content).toMatch(/invalid arguments/);
   });
 
   it('compacts oversized history before the first model call', async () => {

@@ -1,10 +1,10 @@
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { AddressInfo } from 'node:net';
-import { run, type ConsentFn, type ContextConfig } from '../agent/loop';
+import { run, type ConsentFn, type ContextConfig, type InvokeClientTool } from '../agent/loop';
 import type { Message, ModelClient } from '../core/types';
 import type { ToolRegistry } from '../agent/tools';
 import type { Store } from '../store/store';
-import { parseClientMessage, type ServerMessage } from './protocol';
+import { parseClientMessage, type ClientToolDecl, type ServerMessage } from './protocol';
 
 /** An agent = config over the shared harness: a prompt + a tool set (+ later, model/context). */
 export interface Agent {
@@ -56,7 +56,9 @@ export function createHarnessServer(opts: HarnessServerOptions): Promise<Harness
 
 function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map<string, Agent>): void {
   let authed = false;
+  let clientTools: ClientToolDecl[] = [];
   const pendingConsent = new Map<string, (allow: boolean) => void>();
+  const pendingToolResults = new Map<string, (r: { result?: unknown; error?: string }) => void>();
   const activeRuns = new Map<string, AbortController>();
 
   const send = (msg: ServerMessage) => {
@@ -90,6 +92,7 @@ function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map
         return;
       }
       authed = true;
+      clientTools = msg.clientTools ?? [];
       send({ type: 'ready', agents: [...agents.keys()] });
       return;
     }
@@ -106,6 +109,12 @@ function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map
 
         const requestConsent: ConsentFn = ({ callId }) =>
           new Promise<boolean>((resolve) => pendingConsent.set(callId, resolve));
+
+        // Bridge a model tool-call out to the app's UI (client tool) and await its response.
+        const invokeClientTool: InvokeClientTool = ({ runId, callId, name, args }) => {
+          send({ type: 'tool.invoke', runId, callId, name, args });
+          return new Promise((resolve) => pendingToolResults.set(callId, resolve));
+        };
 
         // Load prior history for a persisted session; new messages get saved after the run.
         const store = opts.store;
@@ -126,6 +135,8 @@ function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map
           context: agent.context,
           emit: (event) => send({ type: 'run.event', runId: msg.runId, event }),
           requestConsent,
+          clientTools,
+          invokeClientTool,
           signal: controller.signal,
         })
           .then((result) => {
@@ -174,16 +185,26 @@ function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map
         send({ type: 'session.deleted', sessionId: msg.sessionId });
         return;
       }
+      case 'tool.result': {
+        const resolve = pendingToolResults.get(msg.callId);
+        if (resolve) {
+          pendingToolResults.delete(msg.callId);
+          resolve({ result: msg.result, error: msg.error });
+        }
+        return;
+      }
       case 'hello':
         send({ type: 'error', code: 'already_authed', message: 'already connected' });
         return;
-      // 'tool.result' — client-side tool responses; wired when client-side tools land.
     }
   });
 
   ws.on('close', () => {
     for (const controller of activeRuns.values()) controller.abort();
+    // Unblock any in-flight client-tool invocation so its awaiting dispatch doesn't hang.
+    for (const resolve of pendingToolResults.values()) resolve({ error: 'connection closed' });
     pendingConsent.clear();
+    pendingToolResults.clear();
     activeRuns.clear();
   });
 }

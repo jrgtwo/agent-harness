@@ -89,6 +89,83 @@ describe('harness WebSocket server', () => {
     client.close();
   });
 
+  const playerDecl = {
+    name: 'select_player',
+    description: 'pull up a player in the UI and return their stat line',
+    params: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+    mode: 'confirm' as const,
+  };
+
+  it('routes a client-declared tool to the app after consent and feeds its result back', async () => {
+    const { agent } = timeAgent();
+    const model = new ScriptedModel([callTool('c1', 'select_player', { name: 'Josh Allen' }), answer('Allen looks strong')]);
+    server = await createHarnessServer({ model, agents: [agent], token: 'secret' });
+
+    const invoked: { runId: string; callId: string; name: string; args: unknown }[] = [];
+    let finished: (v: unknown) => void;
+    const done = new Promise((r) => (finished = r));
+
+    const client = connectClient(server.port, {
+      clientTools: [playerDecl],
+      handlers: {
+        onEvent: (runId, event) => {
+          if (event.type === 'consent.requested') client.decideConsent(runId, event.callId, true);
+          if (event.type === 'run.finished') finished(event.result);
+        },
+        onToolInvoke: (req) => {
+          invoked.push(req);
+          client.respondTool(req.runId, req.callId, { player: req.args, fantasyPointsPpr: 320 });
+        },
+      },
+    });
+
+    await client.connect();
+    client.startRun('evaluate a player', { agent: 'test' });
+    const result = await done;
+
+    expect(result).toBe('Allen looks strong');
+    expect(invoked).toHaveLength(1);
+    expect(invoked[0]).toMatchObject({ name: 'select_player', args: { name: 'Josh Allen' } });
+    client.close();
+  });
+
+  it('does not invoke the app when the user denies a client tool, and feeds a denial back', async () => {
+    const { agent } = timeAgent();
+    const model = new ScriptedModel([callTool('c1', 'select_player', { name: 'X' }), answer('ok, skipped it')]);
+    server = await createHarnessServer({ model, agents: [agent], token: 'secret' });
+
+    const invoked: unknown[] = [];
+    const consentNames: string[] = [];
+    let finished: (v: unknown) => void;
+    const done = new Promise((r) => (finished = r));
+
+    const client = connectClient(server.port, {
+      clientTools: [playerDecl],
+      handlers: {
+        onEvent: (runId, event) => {
+          if (event.type === 'consent.requested') {
+            consentNames.push(event.name);
+            client.decideConsent(runId, event.callId, false);
+          }
+          if (event.type === 'run.finished') finished(event.result);
+        },
+        onToolInvoke: (req) => {
+          invoked.push(req);
+          client.respondTool(req.runId, req.callId, {});
+        },
+      },
+    });
+
+    await client.connect();
+    client.startRun('evaluate a player', { agent: 'test' });
+    const result = await done;
+
+    expect(result).toBe('ok, skipped it');
+    expect(consentNames).toContain('select_player'); // the client tool was gated through consent
+    expect(invoked).toHaveLength(0); // denied before ever reaching the app
+    client.close();
+  });
+
   it('rejects a bad token', async () => {
     const { agent } = timeAgent();
     server = await createHarnessServer({ model: new ScriptedModel([]), agents: [agent], token: 'secret' });
