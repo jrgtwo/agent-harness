@@ -8,7 +8,7 @@ import type {
   ToolCall,
   Usage,
 } from '../core/types';
-import { parseTextToolCalls, TOOL_CALL_BLOCK } from './textToolCalls';
+import { parseTextToolCalls, TOOL_CALL_BLOCK, TOOL_CALL_LEAK_NOTICE } from './textToolCalls';
 
 type FetchLike = typeof fetch;
 
@@ -144,17 +144,22 @@ async function readStream(body: ReadableStream<Uint8Array>, handlers?: ModelStre
   let finalContent = content;
   // Fallback for models that emit tool calls as <tool_call> TEXT rather than the structured
   // tool_calls field. Only runs when nothing structured came back, so well-behaved models are
-  // untouched. Prefer content; if content is empty, rescue a call the model drafted in its
-  // reasoning. Consent still gates each resulting call.
+  // untouched. Consent still gates each resulting call.
   if (toolCalls.length === 0) {
     const fromContent = parseTextToolCalls(content);
     if (fromContent.length) {
+      // Tool calls in the answer are committed output — take them and strip from the answer.
       toolCalls = fromContent.map((c) => ({ id: crypto.randomUUID(), name: c.name, arguments: c.arguments }));
       finalContent = content.replace(TOOL_CALL_BLOCK, '').trim();
     } else if (!content.trim()) {
+      // Content is empty: the model may have drafted a call in its reasoning. Reasoning is draft
+      // space, so rescue only a SINGLE, unambiguous call. Multiple drafts weren't committed — don't
+      // fire them; surface an actionable diagnostic instead of ending silently.
       const fromReasoning = parseTextToolCalls(reasoning);
-      if (fromReasoning.length) {
+      if (fromReasoning.length === 1) {
         toolCalls = fromReasoning.map((c) => ({ id: crypto.randomUUID(), name: c.name, arguments: c.arguments }));
+      } else if (fromReasoning.length > 1) {
+        finalContent = TOOL_CALL_LEAK_NOTICE;
       }
     }
   }

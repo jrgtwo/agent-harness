@@ -5,6 +5,13 @@
 
 export const TOOL_CALL_BLOCK = /<tool_call>[\s\S]*?<\/tool_call>/g;
 
+// Shown as the answer when the model leaked tool-call text we couldn't confidently act on (e.g.
+// several ambiguous drafts in the reasoning channel). Turns a silent dead-end into a fixable signal.
+export const TOOL_CALL_LEAK_NOTICE =
+  '[agent-harness] The model emitted tool call(s) as text that this server did not parse into ' +
+  'structured tool_calls, so the harness could not act on them. Enable tool-call parsing on your ' +
+  "model server (e.g. llama-server --jinja with the model's chat template).";
+
 export function parseTextToolCalls(text: string): { name: string; arguments: string }[] {
   const calls: { name: string; arguments: string }[] = [];
   const blockRe = /<tool_call>([\s\S]*?)<\/tool_call>/g;

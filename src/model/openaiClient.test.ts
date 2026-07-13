@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { OpenAICompatibleClient } from './openaiClient';
 import type { ModelProfile } from '../core/types';
+import { TOOL_CALL_LEAK_NOTICE } from './textToolCalls';
 
 const profile: ModelProfile = { baseUrl: 'http://localhost:5174/v1', model: 'local' };
 
@@ -105,7 +106,7 @@ describe('OpenAICompatibleClient', () => {
     expect(result.content).toBe('');
   });
 
-  it('rescues a tool call drafted in reasoning when content is empty', async () => {
+  it('rescues a SINGLE tool call drafted in reasoning when content is empty', async () => {
     const fetchImpl = vi.fn(async () =>
       sseResponse([
         'data: {"choices":[{"delta":{"reasoning_content":"hmm <tool_call><function=web_search><parameter=query>rodgers</parameter></function></tool_call>"}}]}\n',
@@ -117,5 +118,19 @@ describe('OpenAICompatibleClient', () => {
     const result = await client.chat([{ role: 'user', content: 'x' }], []);
     expect(result.toolCalls).toHaveLength(1);
     expect(result.toolCalls[0]).toMatchObject({ name: 'web_search', arguments: '{"query":"rodgers"}' });
+  });
+
+  it('does NOT fire multiple drafted tool calls from reasoning; surfaces a diagnostic instead', async () => {
+    const fetchImpl = vi.fn(async () =>
+      sseResponse([
+        'data: {"choices":[{"delta":{"reasoning_content":"maybe <tool_call><function=fetch_url><parameter=url>https://a.com</parameter></function></tool_call> or <tool_call><function=fetch_url><parameter=url>https://b.com</parameter></function></tool_call>"}}]}\n',
+        'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+        'data: [DONE]\n',
+      ]),
+    );
+    const client = new OpenAICompatibleClient(profile, fetchImpl as unknown as typeof fetch);
+    const result = await client.chat([{ role: 'user', content: 'x' }], []);
+    expect(result.toolCalls).toHaveLength(0);
+    expect(result.content).toBe(TOOL_CALL_LEAK_NOTICE);
   });
 });
