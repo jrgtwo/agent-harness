@@ -1,6 +1,7 @@
 import { WebSocketServer, type WebSocket } from 'ws';
 import type { AddressInfo } from 'node:net';
 import { run, type ConsentFn, type ContextConfig, type InvokeClientTool } from '../agent/loop';
+import { renderUiTagInstructions, type UiTagDef } from '../agent/uiTags';
 import type { Message, ModelClient } from '../core/types';
 import type { ToolRegistry } from '../agent/tools';
 import type { Store } from '../store/store';
@@ -13,6 +14,8 @@ export interface Agent {
   tools: ToolRegistry;
   /** Optional context management (budget/summary/tool-caps/live-state). */
   context?: ContextConfig;
+  /** Declarative UI tags the model may emit inline; the harness teaches + parses them (uiTags). */
+  uiTags?: UiTagDef[];
 }
 
 export interface HarnessServerOptions {
@@ -128,7 +131,8 @@ function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map
         run({
           runId: msg.runId,
           input: msg.input,
-          systemPrompt: agent.systemPrompt,
+          // Teach the model any declarative UI tags the agent declared, right in the system prompt.
+          systemPrompt: agent.systemPrompt + renderUiTagInstructions(agent.uiTags ?? []),
           model: opts.model,
           tools: agent.tools,
           history,

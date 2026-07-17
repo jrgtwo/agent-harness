@@ -4,6 +4,13 @@ export * from './core/events';
 export { OpenAICompatibleClient } from './model/openaiClient';
 export { ToolRegistry, type ToolDef, type ConsentMode, type ValidationResult } from './agent/tools';
 export {
+  parseUiTags,
+  stripUiTags,
+  renderUiTagInstructions,
+  type UiTagDef,
+  type ParsedUiTag,
+} from './agent/uiTags';
+export {
   run,
   type RunOptions,
   type RunResult,

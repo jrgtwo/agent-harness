@@ -8,3 +8,5 @@ export type { AgentEvent } from './core/events';
 export type { ClientMessage, ServerMessage, ClientToolDecl } from './transport/protocol';
 export type { Message } from './core/types';
 export type { SessionInfo } from './store/store';
+// UI-tag parsing is pure string work — safe to run in the browser to hydrate tags into components.
+export { parseUiTags, stripUiTags, type UiTagDef, type ParsedUiTag } from './agent/uiTags';
