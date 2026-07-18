@@ -10,3 +10,11 @@ export type { Message } from './core/types';
 export type { SessionInfo } from './store/store';
 // UI-tag parsing is pure string work — safe to run in the browser to hydrate tags into components.
 export { parseUiTags, stripUiTags, type UiTagDef, type ParsedUiTag } from './agent/uiTags';
+// Fan-out orchestration — plain async over the client, safe in the browser.
+export {
+  runGroup,
+  type RunGroupClient,
+  type RunGroupItem,
+  type RunGroupOptions,
+  type GroupItemResult,
+} from './agent/runGroup';

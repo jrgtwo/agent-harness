@@ -11,6 +11,13 @@ export {
   type ParsedUiTag,
 } from './agent/uiTags';
 export {
+  runGroup,
+  type RunGroupClient,
+  type RunGroupItem,
+  type RunGroupOptions,
+  type GroupItemResult,
+} from './agent/runGroup';
+export {
   run,
   type RunOptions,
   type RunResult,

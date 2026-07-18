@@ -41,6 +41,8 @@ export class HarnessClient {
   private readonly handlers: HarnessClientHandlers;
   private readonly clientTools?: ClientToolDecl[];
   private readonly WS: SocketCtor;
+  /** Per-run event listeners (opt-in via startRun); a run with one bypasses the global onEvent. */
+  private readonly runListeners = new Map<string, (event: AgentEvent) => void>();
 
   constructor(url: string, token: string, opts: HarnessClientOptions = {}) {
     this.url = url;
@@ -77,9 +79,16 @@ export class HarnessClient {
 
   private dispatch(msg: ServerMessage): void {
     switch (msg.type) {
-      case 'run.event':
-        this.handlers.onEvent?.(msg.runId, msg.event);
+      case 'run.event': {
+        // A run started with its own onEvent gets its events privately; otherwise the global handler.
+        const listener = this.runListeners.get(msg.runId);
+        if (listener) listener(msg.event);
+        else this.handlers.onEvent?.(msg.runId, msg.event);
+        if (msg.event.type === 'run.finished' || msg.event.type === 'run.error') {
+          this.runListeners.delete(msg.runId);
+        }
         break;
+      }
       case 'tool.invoke':
         this.handlers.onToolInvoke?.(msg);
         break;
@@ -102,8 +111,18 @@ export class HarnessClient {
     this.ws?.send(JSON.stringify(msg));
   }
 
-  startRun(input: string, opts: { runId?: string; agent?: string; sessionId?: string } = {}): string {
+  startRun(
+    input: string,
+    opts: {
+      runId?: string;
+      agent?: string;
+      sessionId?: string;
+      /** Route THIS run's events here (bypassing the global onEvent); removed when the run settles. */
+      onEvent?: (event: AgentEvent) => void;
+    } = {},
+  ): string {
     const runId = opts.runId ?? crypto.randomUUID();
+    if (opts.onEvent) this.runListeners.set(runId, opts.onEvent);
     this.send({ type: 'run.start', runId, input, agent: opts.agent, sessionId: opts.sessionId });
     return runId;
   }
