@@ -89,6 +89,36 @@ describe('harness WebSocket server', () => {
     client.close();
   });
 
+  it('consent policy "allow" auto-approves gated tools with no client decision', async () => {
+    const { agent, handler } = timeAgent();
+    const model = new ScriptedModel([callTool('c1', 'get_time', {}), answer('done')]);
+    server = await createHarnessServer({ model, agents: [agent], token: 'secret' });
+
+    const events: AgentEvent[] = [];
+    let finished: (v: unknown) => void;
+    const done = new Promise((r) => (finished = r));
+
+    const client = connectClient(server.port, {
+      handlers: {
+        onEvent: (_runId, event) => {
+          events.push(event);
+          // Deliberately never calls decideConsent — the server must auto-approve under the policy.
+          if (event.type === 'run.finished') finished(event.result);
+        },
+      },
+    });
+    await client.connect();
+    client.setConsentPolicy('allow');
+    client.startRun('what time is it?');
+    const result = await done;
+
+    expect(handler).toHaveBeenCalled(); // the gated tool ran without a round-trip
+    expect(result).toBe('done');
+    // Trace is still emitted, auto-approved.
+    expect(events.find((e) => e.type === 'consent.decided')).toMatchObject({ allow: true });
+    client.close();
+  });
+
   const playerDecl = {
     name: 'select_player',
     description: 'pull up a player in the UI and return their stat line',

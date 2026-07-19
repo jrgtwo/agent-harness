@@ -60,6 +60,9 @@ export function createHarnessServer(opts: HarnessServerOptions): Promise<Harness
 function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map<string, Agent>): void {
   let authed = false;
   let clientTools: ClientToolDecl[] = [];
+  // Connection-scoped consent policy: 'ask' round-trips every non-auto tool to the client (default);
+  // 'allow' auto-approves them server-side (no round-trip). Set via a consent.policy message.
+  let consentPolicy: 'ask' | 'allow' = 'ask';
   const pendingConsent = new Map<string, (allow: boolean) => void>();
   const pendingToolResults = new Map<string, (r: { result?: unknown; error?: string }) => void>();
   const activeRuns = new Map<string, AbortController>();
@@ -111,7 +114,9 @@ function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map
         activeRuns.set(msg.runId, controller);
 
         const requestConsent: ConsentFn = ({ callId }) =>
-          new Promise<boolean>((resolve) => pendingConsent.set(callId, resolve));
+          consentPolicy === 'allow'
+            ? Promise.resolve(true)
+            : new Promise<boolean>((resolve) => pendingConsent.set(callId, resolve));
 
         // Bridge a model tool-call out to the app's UI (client tool) and await its response.
         const invokeClientTool: InvokeClientTool = ({ runId, callId, name, args }) => {
@@ -168,8 +173,21 @@ function handleConnection(ws: WebSocket, opts: HarnessServerOptions, agents: Map
         }
         return;
       }
+      case 'consent.policy': {
+        consentPolicy = msg.mode;
+        // Switching to 'allow' also clears the current backlog — resolve everything pending.
+        if (msg.mode === 'allow') {
+          for (const resolve of pendingConsent.values()) resolve(true);
+          pendingConsent.clear();
+        }
+        return;
+      }
       case 'run.cancel': {
         activeRuns.get(msg.runId)?.abort();
+        return;
+      }
+      case 'run.cancelAll': {
+        for (const controller of activeRuns.values()) controller.abort();
         return;
       }
       case 'session.list': {

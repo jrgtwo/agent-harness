@@ -52,6 +52,15 @@ describe('HarnessClient per-run event routing', () => {
     expect(globalEvents).toEqual([runId]);
   });
 
+  it('setConsentPolicy and cancelAll send the right messages', async () => {
+    const { client, sock } = await connected();
+    client.setConsentPolicy('allow');
+    client.cancelAll();
+    const sent = sock.sent.map((s) => JSON.parse(s) as { type: string });
+    expect(sent).toContainEqual({ type: 'consent.policy', mode: 'allow' });
+    expect(sent).toContainEqual({ type: 'run.cancelAll' });
+  });
+
   it('stops routing to a per-run listener after its terminal event', async () => {
     const { client, sock } = await connected();
     const runEvents: AgentEvent[] = [];

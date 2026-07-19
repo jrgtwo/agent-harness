@@ -20,8 +20,10 @@ export type ClientMessage =
   | { type: 'hello'; token: string; clientTools?: ClientToolDecl[] }
   | { type: 'run.start'; runId: string; input: string; agent?: string; sessionId?: string }
   | { type: 'consent.decision'; runId: string; callId: string; allow: boolean }
+  | { type: 'consent.policy'; mode: 'ask' | 'allow' }
   | { type: 'tool.result'; runId: string; callId: string; result?: unknown; error?: string }
   | { type: 'run.cancel'; runId: string }
+  | { type: 'run.cancelAll' }
   | { type: 'session.list' }
   | { type: 'session.load'; sessionId: string }
   | { type: 'session.delete'; sessionId: string };
@@ -68,6 +70,10 @@ export function parseClientMessage(raw: unknown): Parsed<ClientMessage> {
       if (!str(m.runId) || !str(m.callId) || typeof m.allow !== 'boolean')
         return { ok: false, error: 'consent.decision requires runId, callId, allow' };
       return { ok: true, value: { type: 'consent.decision', runId: m.runId, callId: m.callId, allow: m.allow } };
+    case 'consent.policy':
+      if (m.mode !== 'ask' && m.mode !== 'allow')
+        return { ok: false, error: "consent.policy mode must be 'ask' or 'allow'" };
+      return { ok: true, value: { type: 'consent.policy', mode: m.mode } };
     case 'tool.result':
       if (!str(m.runId) || !str(m.callId)) return { ok: false, error: 'tool.result requires runId and callId' };
       return {
@@ -83,6 +89,8 @@ export function parseClientMessage(raw: unknown): Parsed<ClientMessage> {
     case 'run.cancel':
       if (!str(m.runId)) return { ok: false, error: 'run.cancel requires runId' };
       return { ok: true, value: { type: 'run.cancel', runId: m.runId } };
+    case 'run.cancelAll':
+      return { ok: true, value: { type: 'run.cancelAll' } };
     case 'session.list':
       return { ok: true, value: { type: 'session.list' } };
     case 'session.load':

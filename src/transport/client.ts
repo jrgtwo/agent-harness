@@ -139,6 +139,16 @@ export class HarnessClient {
     this.send({ type: 'run.cancel', runId });
   }
 
+  /** Cancel every active run on this connection (e.g. a Stop button). */
+  cancelAll(): void {
+    this.send({ type: 'run.cancelAll' });
+  }
+
+  /** Set the connection's consent policy: 'ask' (default, per-call) or 'allow' (auto-approve). */
+  setConsentPolicy(mode: 'ask' | 'allow'): void {
+    this.send({ type: 'consent.policy', mode });
+  }
+
   listSessions(): void {
     this.send({ type: 'session.list' });
   }
