@@ -16,4 +16,11 @@ describe('parseClientMessage — consent.policy & run.cancelAll', () => {
   it('accepts run.cancelAll', () => {
     expect(parseClientMessage({ type: 'run.cancelAll' })).toEqual({ ok: true, value: { type: 'run.cancelAll' } });
   });
+
+  it('parses run.start cache fields (cacheKey / ttl), ignoring wrong types', () => {
+    const ok = parseClientMessage({ type: 'run.start', runId: 'r', input: 'hi', cacheKey: 'k1', ttl: 1000 });
+    expect(ok).toMatchObject({ ok: true, value: { cacheKey: 'k1', ttl: 1000 } });
+    const bad = parseClientMessage({ type: 'run.start', runId: 'r', input: 'hi', cacheKey: 5, ttl: 'x' });
+    expect(bad).toMatchObject({ ok: true, value: { cacheKey: undefined, ttl: undefined } });
+  });
 });

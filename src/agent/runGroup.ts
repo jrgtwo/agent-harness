@@ -7,13 +7,19 @@ import type { AgentEvent } from '../core/events';
 
 /** The slice of HarnessClient runGroup needs — HarnessClient satisfies this structurally. */
 export interface RunGroupClient {
-  startRun(input: string, opts: { agent?: string; onEvent?: (event: AgentEvent) => void }): string;
+  startRun(
+    input: string,
+    opts: { agent?: string; onEvent?: (event: AgentEvent) => void; cacheKey?: string; ttl?: number },
+  ): string;
   cancel(runId: string): void;
 }
 
 export interface RunGroupItem {
   input: string;
   agent?: string;
+  /** Memoize this item's result under this key (see HarnessClient.startRun). */
+  cacheKey?: string;
+  ttl?: number;
 }
 
 export interface GroupItemResult {
@@ -60,8 +66,12 @@ export async function runGroup(
         inFlight.delete(index);
         resolve(r);
       };
+      // TEMP debug: what runGroup hands to startRun.
+      console.log('[harness runGroup] startRun cacheKey =', items[index]!.cacheKey);
       const runId = client.startRun(items[index]!.input, {
         agent: items[index]!.agent,
+        cacheKey: items[index]!.cacheKey,
+        ttl: items[index]!.ttl,
         onEvent: (event) => {
           onEvent(index, runId, event);
           if (event.type === 'run.finished') finish({ runId, status: 'done', result: event.result });

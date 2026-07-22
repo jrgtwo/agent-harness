@@ -31,6 +31,13 @@ describe('parseUiTags', () => {
     expect(parseUiTags(tag('rank="1" tier="1"', 'no id'), [player])).toEqual([]);
   });
 
+  it('tolerates a sloppy close with dropped % markers ({/name})', () => {
+    // Small models often emit a correct opener but a bare `{/player}` close; still render the card.
+    expect(parseUiTags('{% player id="P1" rank="1" %}Anchor pick.{/player}', [player])).toEqual([
+      { name: 'player', attributes: { id: 'P1', rank: '1' }, body: 'Anchor pick.' },
+    ]);
+  });
+
   it('ignores an unclosed (streaming) tag and unregistered tags', () => {
     const text = `${tag('id="P1"', 'done')}\n{% chart x="1" %}other{% /chart %}\n{% player id="P2" %}still typing…`;
     expect(parseUiTags(text, [player]).map((t) => t.attributes.id)).toEqual(['P1']);

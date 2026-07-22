@@ -119,6 +119,82 @@ describe('harness WebSocket server', () => {
     client.close();
   });
 
+  it('memoizes a run by cacheKey — a second run with the same key replays from cache, not the model', async () => {
+    const { agent } = timeAgent();
+    let chatCalls = 0;
+    const model: ModelClient = {
+      async chat(_m, _t, handlers) {
+        chatCalls++;
+        handlers?.onToken?.('cached answer');
+        return answer('cached answer');
+      },
+    };
+    server = await createHarnessServer({ model, agents: [agent], token: 'secret' });
+
+    const results = new Map<string, unknown>();
+    const eventsByRun = new Map<string, string[]>();
+    const finishers = new Map<string, () => void>();
+    const client = connectClient(server.port, {
+      handlers: {
+        onEvent: (runId, event) => {
+          (eventsByRun.get(runId) ?? eventsByRun.set(runId, []).get(runId)!).push(event.type);
+          if (event.type === 'run.finished') {
+            results.set(runId, event.result);
+            finishers.get(runId)?.();
+          }
+        },
+      },
+    });
+    await client.connect();
+
+    const runOnce = (runId: string) => {
+      const done = new Promise<void>((res) => finishers.set(runId, res));
+      client.startRun('scout X', { runId, cacheKey: 'k1' });
+      return done;
+    };
+    await runOnce('r1');
+    await runOnce('r2');
+
+    expect(chatCalls).toBe(1); // second run served from cache, model not re-invoked
+    expect(results.get('r1')).toBe('cached answer');
+    expect(results.get('r2')).toBe('cached answer');
+    // the replayed run still emits the normal trace, incl. the cached content as a token
+    expect(eventsByRun.get('r2')).toEqual(['run.started', 'token', 'run.finished']);
+    client.close();
+  });
+
+  it('ttl of 0 makes every cacheKey call miss and re-run', async () => {
+    const { agent } = timeAgent();
+    let chatCalls = 0;
+    const model: ModelClient = {
+      async chat() {
+        chatCalls++;
+        return answer('x');
+      },
+    };
+    server = await createHarnessServer({ model, agents: [agent], token: 'secret' });
+
+    const finishers = new Map<string, () => void>();
+    const client = connectClient(server.port, {
+      handlers: {
+        onEvent: (runId, event) => {
+          if (event.type === 'run.finished') finishers.get(runId)?.();
+        },
+      },
+    });
+    await client.connect();
+    const runOnce = (runId: string) => {
+      const done = new Promise<void>((res) => finishers.set(runId, res));
+      client.startRun('x', { runId, cacheKey: 'k', ttl: 0 });
+      return done;
+    };
+    await runOnce('r1');
+    await runOnce('r2');
+
+    expect(chatCalls).toBe(2); // ttl 0 → stale immediately → both ran
+    client.close();
+  });
+
   const playerDecl = {
     name: 'select_player',
     description: 'pull up a player in the UI and return their stat line',

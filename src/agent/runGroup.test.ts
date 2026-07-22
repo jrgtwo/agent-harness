@@ -7,12 +7,15 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
 // A fake client that records startRun/cancel and lets the test drive each run's events.
 class FakeClient implements RunGroupClient {
-  started: { runId: string; input: string; agent?: string; onEvent: (e: AgentEvent) => void }[] = [];
+  started: { runId: string; input: string; agent?: string; cacheKey?: string; onEvent: (e: AgentEvent) => void }[] = [];
   cancelled: string[] = [];
   private n = 0;
-  startRun(input: string, opts: { agent?: string; onEvent?: (e: AgentEvent) => void }): string {
+  startRun(
+    input: string,
+    opts: { agent?: string; onEvent?: (e: AgentEvent) => void; cacheKey?: string; ttl?: number },
+  ): string {
     const runId = `r${this.n++}`;
-    this.started.push({ runId, input, agent: opts.agent, onEvent: opts.onEvent! });
+    this.started.push({ runId, input, agent: opts.agent, cacheKey: opts.cacheKey, onEvent: opts.onEvent! });
     return runId;
   }
   cancel(runId: string): void {
@@ -84,6 +87,19 @@ describe('runGroup', () => {
     c.finish('r1');
     await p;
     expect(seen).toContainEqual([0, 'r0', 'token']);
+  });
+
+  it('forwards each item\'s cacheKey to startRun', async () => {
+    const c = new FakeClient();
+    const items = [
+      { input: 'a', agent: 'scout', cacheKey: 'k-a' },
+      { input: 'b', agent: 'scout', cacheKey: 'k-b' },
+    ];
+    const p = runGroup(c, items, { concurrency: 2, onEvent: () => {} });
+    expect(c.started.map((s) => s.cacheKey)).toEqual(['k-a', 'k-b']);
+    c.finish('r0');
+    c.finish('r1');
+    await p;
   });
 
   it('abort stops starting queued items and cancels in-flight ones', async () => {

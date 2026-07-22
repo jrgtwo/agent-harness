@@ -119,11 +119,25 @@ export class HarnessClient {
       sessionId?: string;
       /** Route THIS run's events here (bypassing the global onEvent); removed when the run settles. */
       onEvent?: (event: AgentEvent) => void;
+      /** Memoize this run's result under this key; a fresh cache hit is replayed without re-running. */
+      cacheKey?: string;
+      /** Max age (ms) for a cache hit; omit to never expire (for the sidecar's lifetime). */
+      ttl?: number;
     } = {},
   ): string {
     const runId = opts.runId ?? crypto.randomUUID();
     if (opts.onEvent) this.runListeners.set(runId, opts.onEvent);
-    this.send({ type: 'run.start', runId, input, agent: opts.agent, sessionId: opts.sessionId });
+    // TEMP debug: what startRun puts into the run.start message.
+    console.log('[harness client] startRun sending cacheKey =', opts.cacheKey);
+    this.send({
+      type: 'run.start',
+      runId,
+      input,
+      agent: opts.agent,
+      sessionId: opts.sessionId,
+      cacheKey: opts.cacheKey,
+      ttl: opts.ttl,
+    });
     return runId;
   }
 

@@ -18,7 +18,7 @@ export interface ClientToolDecl {
 
 export type ClientMessage =
   | { type: 'hello'; token: string; clientTools?: ClientToolDecl[] }
-  | { type: 'run.start'; runId: string; input: string; agent?: string; sessionId?: string }
+  | { type: 'run.start'; runId: string; input: string; agent?: string; sessionId?: string; cacheKey?: string; ttl?: number }
   | { type: 'consent.decision'; runId: string; callId: string; allow: boolean }
   | { type: 'consent.policy'; mode: 'ask' | 'allow' }
   | { type: 'tool.result'; runId: string; callId: string; result?: unknown; error?: string }
@@ -64,6 +64,8 @@ export function parseClientMessage(raw: unknown): Parsed<ClientMessage> {
           input: m.input,
           agent: str(m.agent) ? m.agent : undefined,
           sessionId: str(m.sessionId) ? m.sessionId : undefined,
+          cacheKey: str(m.cacheKey) ? m.cacheKey : undefined,
+          ttl: typeof m.ttl === 'number' ? m.ttl : undefined,
         },
       };
     case 'consent.decision':

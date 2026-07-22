@@ -41,10 +41,12 @@ function parseAttrs(raw: string): Record<string, string> {
 
 // Matches any registered tag name: {% name attrs /%} (self-closing) or {% name attrs %}body{% /name %}.
 // The \1 backreference keeps the closing tag matched to its opener; attrs exclude % so a tag can't
-// swallow the next one.
+// swallow the next one. The closing marker's `%` signs are optional — small models routinely emit a
+// sloppy `{/name}` close while getting the opener right, and a strict close drops the whole card to
+// raw text. The close stays anchored to the exact tag name, so leniency can't over-match prose.
 function tagPattern(names: string[]): RegExp {
   const alt = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  return new RegExp(`\\{%\\s*(${alt})\\b([^%]*?)(?:\\/%\\}|%\\}([\\s\\S]*?)\\{%\\s*\\/\\1\\s*%\\})`, 'g');
+  return new RegExp(`\\{%\\s*(${alt})\\b([^%]*?)(?:\\/%\\}|%\\}([\\s\\S]*?)\\{%?\\s*\\/\\1\\s*%?\\})`, 'g');
 }
 
 /** Find every registered tag in `text`, in order, keeping only those whose required attrs are present. */
